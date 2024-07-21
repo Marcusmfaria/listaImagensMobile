@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, Image, Alert } from 'react-native';
+import { View, Text, Button, FlatList, Image, Alert, ActivityIndicator} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, deleteObject, list } from "firebase/storage";
@@ -43,12 +43,9 @@ const ImagePickerExample = () => {
   };
 
   function getRandom(max) {
-    return Math.floor(Math.random() * max + 1)
+    return Math.floor(Math.random() * max + 1);
   }
 
-
-
-  //Método para realizar upload para o Firebase
   const uploadImage = async () => {
     if (!imageUri) {
       Alert.alert('Selecione uma imagem antes de enviar.');
@@ -58,46 +55,64 @@ const ImagePickerExample = () => {
     // Create a root reference
     const storage = getStorage();
 
-    var name = getRandom(200);
-    // Create a reference to 'mountains.jpg'
+    const name = getRandom(200);
     const mountainsRef = ref(storage, name + '.jpg');
 
     const response = await fetch(imageUri);
     const blob = await response.blob();
 
+    setUploading(true);
     uploadBytes(mountainsRef, blob).then((snapshot) => {
       console.log(snapshot);
-      alert('Imagem enviada com sucesso!!');
+      Alert.alert('Imagem enviada com sucesso!!');
+      setUploading(false);
+      setImageUri(null); // Limpar a imagem selecionada
+    }).catch((error) => {
+      console.error('Erro ao fazer upload:', error);
+      setUploading(false);
     });
   };
 
-
-  //Listar no console as imagens salvas no storage
   async function LinkImage() {
-    // Create a reference under which you want to list
     const storage = getStorage();
     const listRef = ref(storage);
 
-    // Fetch the first page of 100.
     const firstPage = await list(listRef, { maxResults: 100 });
-    var lista = [];
-    firstPage.items.map((item) => {
+    const lista = firstPage.items.map((item) => {
+      return `https://firebasestorage.googleapis.com/v0/b/${item.bucket}/o/${encodeURIComponent(item.fullPath)}?alt=media`;
+    });
 
-      var link = ('https://firebasestorage.googleapis.com/v0/b/' +
-        item.bucket + '/o/' + item.fullPath + '?alt=media');
-      lista.push(link);
-
-    })
     setImage(lista);
     setVisible(true);
-    console.log(image);
+    console.log(lista);
   }
 
-  const renderItem = ({ item }) => (
-    <View style={styles.item}>
-      <Text style={styles.title}>{item.link}</Text>
-    </View>
-  );
+  async function deleteImage(imagePath) {
+    try {
+      if (!imagePath.includes('/o/') || !imagePath.includes('?')) {
+        throw new Error('URL da imagem malformada');
+      }
+
+      const pathSegments = imagePath.split('/o/');
+      if (pathSegments.length < 2) {
+        throw new Error('URL da imagem malformada');
+      }
+
+      const decodedPath = decodeURIComponent(pathSegments[1].split('?')[0]);
+      const storage = getStorage();
+      const listaRef = ref(storage, decodedPath);
+
+      deleteObject(listaRef).then(() => {
+        console.log('File deleted successfully');
+        // Atualizar a lista de imagens
+        setImage(image.filter(img => img !== imagePath));
+      }).catch((error) => {
+        console.error('Uh-oh, an error occurred!', error);
+      });
+    } catch (error) {
+      console.error('Erro ao processar a URL da imagem:', error);
+    }
+  }
 
 
   return (
@@ -116,7 +131,12 @@ const ImagePickerExample = () => {
         keyExtractor={(item, index) => index.toString()}
         renderItem={({ item }) => (
           <View style={{ marginBottom: 20, alignItems: 'center' }}>
-            <Image source={{ uri: item }} style={{ width: 50, height: 50 }} />
+            {item && (
+              <>
+                <Image source={{ uri: item }} style={{ width: 50, height: 50 }} />
+                <Button title="Deletar Imagem" onPress={() => deleteImage(item)} />
+              </>
+            )}
           </View>
         )}
 
